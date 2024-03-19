@@ -47,9 +47,9 @@ The CLI will provide commands that correspond to the API endpoints. Here are som
 - `job-worker logs 123`: Get the output of the job with ID 123.
 - `job-worker stop 123`: Stop the job with ID 123.
 
-## Streaming Stratety
+## Streaming Strategy
 
-The output of the jobs will be streamed to the client in real-time. This will be achieved by using a WebSocket connection between the client and the server. When a job is started, a new WebSocket connection will be opened. The server will then send the output of the job over this connection as it becomes available.
+The `Logs` API method will stream the output of a job in real-time. This will be achieved by using a WebSocket connection between the client and the server. When a job is started, a new WebSocket connection will be opened. The server will then send the output of the job over this connection as it becomes available.
 
 ## TLS Setup
 

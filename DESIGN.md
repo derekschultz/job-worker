@@ -89,9 +89,19 @@ The CLI will provide commands that correspond to the API endpoints. Here are som
 
 The `Logs` API method will stream the output of a job in real-time. This will be achieved by using gRPC's server-side streaming capabilities. When a job is started, the server will continuously send `JobLogsResponse` messages to the client over a single RPC as the output of the job becomes available. The client can read these messages as they arrive, providing a real-time stream of logs.
 
+Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by utilizing a shared buffer and a mechanism for tracking each client's read position.
+
+1. Upon initiation of a job, the output is captured and written into a shared buffer. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
+
+2. Each client that requests to stream the job's output is provided with a reader that commences at its current read position in the buffer. This is facilitated by maintaining a map that links client IDs to read positions.
+
+3. As the job generates output, it is written into the shared buffer. Each client's reader then reads from the buffer, starting at its own position. This enables each client to receive the job's output in real-time, irrespective of the timing of their streaming initiation.
+
+4. In the event of a client disconnecting or ceasing to stream the output, the associated reader and position can be discarded.
+
 ## Process Execution Lifecycle
 
-The library will use the `os/exec` package to start and stop jobs. When a new job is started, the library will create a new `exec.Cmd` instance, start the command, and add the command to a map of running jobs. The command's output will be captured in a buffer, and will be sent to the client over the WebSocket connection.
+The library will use the `os/exec` package to start and stop jobs. When a new job is started, the library will create a new `exec.Cmd` instance, start the command, and add the command to a map of running jobs. The command's output will be captured in a buffer, and will be sent to the client over the gRPC stream.
 
 To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
 
@@ -103,7 +113,7 @@ The library will be implemented in Go, using the `os/exec` package for process m
 
 Job IDs will be generated using a universally unique identifier (UUID). This will be done using the `github.com/google/uuid` package.
 
-Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups. The library will create a new cgroup for each job, set the resource limits, and add the process to the cgroup.
+Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits (such as CPU usage, memory usage, and disk I/O), and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution.
 
 The mTLS authentication will be implemented using Go's `crypto/tls` package. The server will require client certificates and verify them against a trusted certificate authority. The client will also verify the server's certificate.
 
@@ -114,3 +124,9 @@ The CLI will parse command-line arguments and make the appropriate gRPC calls to
 ## Testing
 
 Unit tests will be written for the library, API server, and CLI. The tests will cover both happy and unhappy scenarios. For example, starting and stopping a job, trying to stop a job that doesn't exist, trying to stop a job that was started by another client, etc.
+
+In addition to these functional tests, we will also include tests for authentication, authorization, and logging:
+
+- Authentication tests will verify that only clients with valid certificates can connect to the API server.
+- Authorization tests will ensure that clients can only control jobs that they own.
+- Logging tests will check that all important events are logged correctly, and that logs contain all necessary information.

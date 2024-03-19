@@ -99,19 +99,15 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 4. In the event of a client disconnecting or ceasing to stream the output, the associated reader and position can be discarded.
 
-## Process Execution Lifecycle
-
-The library will use the `os/exec` package to start and stop jobs. When a new job is started, the library will create a new `exec.Cmd` instance, start the command, and add the command to a map of running jobs. The command's output will be captured in a buffer, and will be sent to the client over the gRPC stream.
-
-To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
-
-The library will also use cgroups to limit the resources that a job can use. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup.
-
 ## Implementation Details
 
 The library will be implemented in Go, using the `os/exec` package for process management. The API server will be implemented using the gRPC framework. The CLI will be a simple Go application that makes gRPC calls to the API server.
 
 Job IDs will be generated using a universally unique identifier (UUID). This will be done using the `github.com/google/uuid` package.
+
+When a new job is started, the library will create a new `exec.Cmd` instance, start the command, and add the command to a map of running jobs. The command's output will be captured in a shared buffer, and will be sent to the client over the gRPC stream.
+
+To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
 
 Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits (such as CPU usage, memory usage, and disk I/O), and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution.
 

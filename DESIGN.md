@@ -32,11 +32,49 @@ service JobWorker {
   rpc Status(JobRequest) returns (JobStatusResponse) {}
   rpc Logs(JobRequest) returns (stream JobLogsResponse) {}
 }
+
+message JobRequest {
+  string id = 1;  // unique identifier of the job
+}
+
+message JobResponse {
+  string id = 1;
+  string status = 2;  // status of the job (e.g., "running", "stopped")
+}
+
+message JobStatusResponse {
+  string id = 1;
+  string status = 2;
+  string output = 3;
+}
+
+message JobLogsResponse {
+  string log = 1;
+}
 ```
 
 ## Security Strategy
 
-The API will leverage mTLS authentication and validate client certificates. A robust set of cipher suites for TLS and a secure crypto setup for certificates will be employed. mTLS will be the sole authentication protocol. A basic authorization mechanism will be implemented, where each client is permitted to control only its own jobs.
+A basic authorization mechanism will be implemented, where each client is permitted to control only its own jobs. This will be enforced by checking the client's ID against the owner of the job in each request.
+
+The client will be identified by the Common Name (CN) field in the certificate it presents to the server during the TLS handshake. The server will map this CN to a specific client ID in its internal database.
+
+The authorization scheme will be defined as follows:
+
+```go
+func (s *Server) authorizeRequest(request *JobRequest, clientID string) error {
+    job, ok := s.Jobs[request.JobID]
+    if !ok {
+        return fmt.Errorf("job not found")
+    }
+    if job.Owner != clientID {
+        return fmt.Errorf("permission denied")
+    }
+    return nil
+}
+```
+
+The API server will use mTLS for secure communication, specifically using TLS 1.3. It's important to note that in the context of Go and TLS 1.3, cipher suites are not subject to configuration. This is due to the design of TLS 1.3, which inherently ensures the security of the connection by using a set of predefined, secure cipher suites.
 
 ## CLI UX
 
@@ -49,11 +87,7 @@ The CLI will provide commands that correspond to the API endpoints. Here are som
 
 ## Streaming Strategy
 
-The `Logs` API method will stream the output of a job in real-time. This will be achieved by using a WebSocket connection between the client and the server. When a job is started, a new WebSocket connection will be opened. The server will then send the output of the job over this connection as it becomes available.
-
-## TLS Setup
-
-The API server will use mTLS for secure communication. The server will be configured to use TLS 1.3, which provides improved security and performance compared to previous versions. The server will also be configured to use secure cipher suites such as ECDHE-ECDSA-AES128-GCM-SHA256 and ECDHE-RSA-AES128-GCM-SHA256.
+The `Logs` API method will stream the output of a job in real-time. This will be achieved by using gRPC's server-side streaming capabilities. When a job is started, the server will continuously send `JobLogsResponse` messages to the client over a single RPC as the output of the job becomes available. The client can read these messages as they arrive, providing a real-time stream of logs.
 
 ## Process Execution Lifecycle
 
@@ -66,6 +100,8 @@ The library will also use cgroups to limit the resources that a job can use. Whe
 ## Implementation Details
 
 The library will be implemented in Go, using the `os/exec` package for process management. The API server will be implemented using the gRPC framework. The CLI will be a simple Go application that makes gRPC calls to the API server.
+
+Job IDs will be generated using a universally unique identifier (UUID). This will be done using the `github.com/google/uuid` package.
 
 Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups. The library will create a new cgroup for each job, set the resource limits, and add the process to the cgroup.
 

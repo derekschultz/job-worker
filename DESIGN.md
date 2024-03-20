@@ -53,6 +53,15 @@ message JobLogsResponse {
 }
 ```
 
+## CLI UX
+
+The CLI will provide commands that correspond to the API endpoints. Here are some example usages:
+
+- `job-worker start "ls -la"`: Start a new job with the command `ls -la`.
+- `job-worker status 123`: Get the status of the job with ID 123.
+- `job-worker logs 123`: Get the output of the job with ID 123.
+- `job-worker stop 123`: Stop the job with ID 123.
+
 ## Security Strategy
 
 A basic authorization mechanism will be implemented, where each client is permitted to control only its own jobs. This will be enforced by checking the client's ID against the owner of the job in each request.
@@ -75,15 +84,6 @@ func (s *Server) authorizeRequest(request *JobRequest, clientID string) error {
 ```
 
 The API server will use mTLS for secure communication, specifically using TLS 1.3. It's important to note that in the context of Go and TLS 1.3, cipher suites are not subject to configuration. This is due to the design of TLS 1.3, which inherently ensures the security of the connection by using a set of predefined, secure cipher suites.
-
-## CLI UX
-
-The CLI will provide commands that correspond to the API endpoints. Here are some example usages:
-
-- `job-worker start "ls -la"`: Start a new job with the command `ls -la`.
-- `job-worker status 123`: Get the status of the job with ID 123.
-- `job-worker logs 123`: Get the output of the job with ID 123.
-- `job-worker stop 123`: Stop the job with ID 123.
 
 ## Streaming Strategy
 

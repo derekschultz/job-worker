@@ -58,9 +58,9 @@ message JobLogsResponse {
 The CLI will provide commands that correspond to the API endpoints. Here are some example usages:
 
 - `job-worker start "ls -la"`: Start a new job with the command `ls -la`.
-- `job-worker status 123`: Get the status of the job with ID 123.
-- `job-worker logs 123`: Get the output of the job with ID 123.
-- `job-worker stop 123`: Stop the job with ID 123.
+- `job-worker status 550e8400-e29b-41d4-a716-446655440000`: Get the status of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
+- `job-worker logs 550e8400-e29b-41d4-a716-446655440000`: Get the output of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
+- `job-worker stop 550e8400-e29b-41d4-a716-446655440000`: Stop the job with ID `550e8400-e29b-41d4-a716-446655440000`.
 
 ## Security Strategy
 

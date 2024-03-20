@@ -25,34 +25,7 @@ The API will be a gRPC API with the following methods:
 
 ## Protobuf Specification
 
-```protobuf
-service JobWorker {
-  rpc Start(JobRequest) returns (JobResponse) {}
-  rpc Stop(JobRequest) returns (JobResponse) {}
-  rpc Status(JobRequest) returns (JobStatusResponse) {}
-  rpc Logs(JobRequest) returns (stream JobLogsResponse) {}
-}
-
-message JobRequest {
-  string id = 1;  // unique identifier of the job
-}
-
-message JobResponse {
-  string id = 1;
-  string status = 2;  // status of the job (e.g., "running", "stopped")
-}
-
-message JobStatusResponse {
-  string id = 1;
-  string status = 2;
-  string output = 3;
-}
-
-message JobLogsResponse {
-  string timestamp = 1;  // timestamp of the log message
-  bytes log = 2;
-}
-```
+Please see [job_worker.proto](/proto/job_worker.proto) for the full protobuf specification.
 
 ## CLI UX
 

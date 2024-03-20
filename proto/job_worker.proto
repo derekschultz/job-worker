@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+// JobWorker service provides methods to manage jobs.
+service JobWorker {
+  // Starts a new job with the given command and arguments.
+  rpc Start(JobStartRequest) returns (JobResponse) {}
+
+  // Stops the job with the given ID.
+  rpc Stop(JobRequest) returns (JobResponse) {}
+
+  // Gets the status of the job with the given ID.
+  rpc Status(JobRequest) returns (JobStatusResponse) {}
+
+  // Streams the logs of the job with the given ID.
+  rpc Logs(JobRequest) returns (stream JobLogsResponse) {}
+}
+
+// Request to start a new job.
+message JobStartRequest {
+  string command = 1;  // command to be executed
+  repeated string args = 2;  // arguments for the command
+}
+
+// Request to perform an operation on a job.
+message JobRequest {
+  string id = 1;  // unique identifier of the job
+}
+
+
+// Response after starting or stopping a job.
+message JobResponse {
+  string id = 1; // unique identifier for the job
+  JobStatus status = 2;  // status of the job
+}
+
+// Possible statuses of a job.
+enum JobStatus {
+  UNKNOWN = 0;
+  STARTED = 1;
+  RUNNING = 2;
+  STOPPED = 3;
+  COMPLETED = 4;
+}
+
+// Response with the status of a job.
+message JobStatusResponse {
+  string id = 1;
+  JobStatus status = 2;
+  string command = 3;  // command of the job
+  repeated string args = 4;  // arguments of the job
+}
+
+// Response with a log message from a job.
+message JobLogsResponse {
+  google.protobuf.Timestamp timestamp = 1;  // timestamp of the log message
+  bytes log = 2;  // log message
+}

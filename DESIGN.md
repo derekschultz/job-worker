@@ -50,7 +50,7 @@ message JobStatusResponse {
 
 message JobLogsResponse {
   string timestamp = 1;  // timestamp of the log message
-  string log = 2;
+  bytes log = 2;
 }
 ```
 

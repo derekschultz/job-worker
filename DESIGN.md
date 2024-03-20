@@ -49,7 +49,8 @@ message JobStatusResponse {
 }
 
 message JobLogsResponse {
-  string log = 1;
+  string timestamp = 1;  // timestamp of the log message
+  string log = 2;
 }
 ```
 

@@ -89,13 +89,13 @@ The API server will use mTLS for secure communication, specifically using TLS 1.
 
 The `Logs` API method will stream the output of a job in real-time. This will be achieved by using gRPC's server-side streaming capabilities. When a job is started, the server will continuously send `JobLogsResponse` messages to the client over a single RPC as the output of the job becomes available. The client can read these messages as they arrive, providing a real-time stream of logs.
 
-Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by utilizing a shared buffer and a mechanism for tracking each client's read position.
+Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by utilizing a shared circular buffer stored in memory, and a mechanism for tracking each client's read position.
 
-1. Upon initiation of a job, the output is captured and written into a shared buffer. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
+1. Upon initiation of a job, the output is captured and written into a shared buffer in memory. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
 
 2. Each client that requests to stream the job's output is provided with a reader that commences at its current read position in the buffer. This is facilitated by maintaining a map that links client IDs to read positions.
 
-3. As the job generates output, it is written into the shared buffer. Each client's reader then reads from the buffer, starting at its own position. This enables each client to receive the job's output in real-time, irrespective of the timing of their streaming initiation.
+3. As the job generates output, it is written into the shared circular buffer in memory. If the buffer is full, new data starts overwriting the oldest data in the buffer. Each client's reader then reads from the buffer, starting at its own position. This enables each client to receive the job's output in real-time, irrespective of the timing of their streaming initiation.
 
 4. In the event of a client disconnecting or ceasing to stream the output, the associated reader and position can be discarded.
 

@@ -62,6 +62,7 @@ message JobLogsRequest {
 message JobLogsResponse {
   google.protobuf.Timestamp timestamp = 1;  // timestamp of the log message
   bytes log = 2;  // log message
+  bool jobCompleted = 3;  // whether the job has completed
 }
 
 // Possible statuses of a job.

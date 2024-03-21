@@ -74,9 +74,7 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 4. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers.
 
-5. In the event that the job completes while streaming, the server continues to send any remaining output to the subscribers until all output has been sent. Once all output has been sent, the server sends a message to the subscribers indicating that the job has completed and the stream is ending.
-
-6. If the `Logs` API method is called after the job has already completed, the server sends all available output from the job to the client, followed by a message indicating that the job has completed and the stream is ending. If the output of the job is no longer available (for example, if it has been removed from the buffer to make room for other data), the server sends a message indicating that the output is not available.
+5. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server sends a `JobLogsResponse` message with `jobCompleted` set to `true`. This indicates that the job has completed and the stream is ending. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, followed by the `JobLogsResponse` message indicating job completion.
 
 ## Implementation Details
 

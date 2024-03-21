@@ -5,16 +5,16 @@ import "google/protobuf/timestamp.proto";
 // JobWorker service provides methods to manage jobs.
 service JobWorker {
   // Starts a new job with the given command and arguments.
-  rpc Start(JobStartRequest) returns (JobResponse) {}
+  rpc Start(JobStartRequest) returns (JobStartResponse) {}
 
   // Stops the job with the given ID.
-  rpc Stop(JobRequest) returns (JobResponse) {}
+  rpc Stop(JobStopRequest) returns (JobStopResponse) {}
 
   // Gets the status of the job with the given ID.
-  rpc Status(JobRequest) returns (JobStatusResponse) {}
+  rpc Status(JobStatusRequest) returns (JobStatusResponse) {}
 
   // Streams the logs of the job with the given ID.
-  rpc Logs(JobRequest) returns (stream JobLogsResponse) {}
+  rpc Logs(JobLogsRequest) returns (stream JobLogsResponse) {}
 }
 
 // Request to start a new job.
@@ -23,37 +23,52 @@ message JobStartRequest {
   repeated string args = 2;  // arguments for the command
 }
 
-// Request to perform an operation on a job.
-message JobRequest {
+// Response after starting a job.
+message JobStartResponse {
+  string id = 1; // unique identifier for the job
+  JobStatusEnum status = 2;  // status of the job
+}
+
+// Request to stop a job.
+message JobStopRequest {
   string id = 1;  // unique identifier of the job
 }
 
-
-// Response after starting or stopping a job.
-message JobResponse {
+// Response after stopping a job.
+message JobStopResponse {
   string id = 1; // unique identifier for the job
-  JobStatus status = 2;  // status of the job
+  JobStatusEnum status = 2;  // status of the job
 }
 
-// Possible statuses of a job.
-enum JobStatus {
-  UNKNOWN = 0;
-  STARTED = 1;
-  RUNNING = 2;
-  STOPPED = 3;
-  COMPLETED = 4;
+// Request to get the status of a job.
+message JobStatusRequest {
+  string id = 1;  // unique identifier of the job
 }
 
 // Response with the status of a job.
 message JobStatusResponse {
   string id = 1;
-  JobStatus status = 2;
+  JobStatusEnum status = 2;
   string command = 3;  // command of the job
   repeated string args = 4;  // arguments of the job
+}
+
+// Request to get the logs of a job.
+message JobLogsRequest {
+  string id = 1;  // unique identifier of the job
 }
 
 // Response with a log message from a job.
 message JobLogsResponse {
   google.protobuf.Timestamp timestamp = 1;  // timestamp of the log message
   bytes log = 2;  // log message
+}
+
+// Possible statuses of a job.
+enum JobStatusEnum {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_STARTED = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_STOPPED = 3;
+  JOB_STATUS_COMPLETED = 4;
 }

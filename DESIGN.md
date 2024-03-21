@@ -31,10 +31,11 @@ Please see [job_worker.proto](/proto/job_worker.proto) for the full protobuf spe
 
 The CLI will provide commands that correspond to the API endpoints. Here are some example usages:
 
-- `job-worker start "ls -la"`: Start a new job with the command `ls -la`.
-- `job-worker status 550e8400-e29b-41d4-a716-446655440000`: Get the status of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
-- `job-worker logs 550e8400-e29b-41d4-a716-446655440000`: Get the output of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
-- `job-worker stop 550e8400-e29b-41d4-a716-446655440000`: Stop the job with ID `550e8400-e29b-41d4-a716-446655440000`.
+- `job-worker server start --address localhost:50051 --cert /path/to/cert --key /path/to/key`: Start the server listening on `localhost:50051` with the specified certificate and key.
+- `job-worker client start "ls -la"`: Start a new job with the command `ls -la`.
+- `job-worker client status 550e8400-e29b-41d4-a716-446655440000`: Get the status of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
+- `job-worker client logs 550e8400-e29b-41d4-a716-446655440000`: Get the output of the job with ID `550e8400-e29b-41d4-a716-446655440000`.
+- `job-worker client stop 550e8400-e29b-41d4-a716-446655440000`: Stop the job with ID `550e8400-e29b-41d4-a716-446655440000`.
 
 ## Security Strategy
 
@@ -67,11 +68,15 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 1. Upon initiation of a job, the output is captured and written into a shared buffer in memory. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
 
-2. Each client that requests to stream the job's output is provided with a reader that commences at its current read position in the buffer. This is facilitated by maintaining a map that links client IDs to read positions.
+2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers.
 
-3. As the job generates output, it is written into the shared circular buffer in memory. If the buffer is full, new data starts overwriting the oldest data in the buffer. Each client's reader then reads from the buffer, starting at its own position. This enables each client to receive the job's output in real-time, irrespective of the timing of their streaming initiation.
+3. As the job generates output, it is written into the shared circular buffer in memory. If the buffer is full, new data starts overwriting the oldest data in the buffer. Each time new data is written to the buffer, all subscribers are notified and sent the new data.
 
-4. In the event of a client disconnecting or ceasing to stream the output, the associated reader and position can be discarded.
+4. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers.
+
+5. In the event that the job completes while streaming, the server continues to send any remaining output to the subscribers until all output has been sent. Once all output has been sent, the server sends a message to the subscribers indicating that the job has completed and the stream is ending.
+
+6. If the `Logs` API method is called after the job has already completed, the server sends all available output from the job to the client, followed by a message indicating that the job has completed and the stream is ending. If the output of the job is no longer available (for example, if it has been removed from the buffer to make room for other data), the server sends a message indicating that the output is not available.
 
 ## Implementation Details
 
@@ -83,7 +88,15 @@ When a new job is started, the library will create a new `exec.Cmd` instance, st
 
 To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
 
-Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits (such as CPU usage, memory usage, and disk I/O), and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution.
+Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2 with the `github.com/containerd/cgroups` package. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution.
+
+The specific resource limits that will be enforced are:
+
+1. CPU: The `cpu.max` parameter will be set to control the total amount of CPU time that the job's processes can consume.
+
+2. Memory: The `memory.max` parameter will be set to control the maximum amount of memory that the job's processes can use.
+
+3. IO: The `io.max` parameter will be set to control the maximum amount of read and write operations that the job's processes can perform.
 
 The mTLS authentication will be implemented using Go's `crypto/tls` package. The server will require client certificates and verify them against a trusted certificate authority. The client will also verify the server's certificate.
 

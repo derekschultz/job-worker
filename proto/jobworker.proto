@@ -2,6 +2,8 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
+option go_package = "github.com/derekschultz/job-worker";
+
 // JobWorker service provides methods to manage jobs.
 service JobWorker {
   // Starts a new job with the given command and arguments.

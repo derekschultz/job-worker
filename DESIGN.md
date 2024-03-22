@@ -62,19 +62,19 @@ The API server will use mTLS for secure communication, specifically using TLS 1.
 
 ## Streaming Strategy
 
-The `Logs` API method will stream the output of a job in real-time. This will be achieved by using gRPC's server-side streaming capabilities. When a job is started, the server will continuously send `JobLogsResponse` messages to the client over a single RPC as the output of the job becomes available. The client can read these messages as they arrive, providing a real-time stream of logs.
+The `Logs` API method will stream the output (both stdout and stderr) of a job in real-time. This will be achieved by using gRPC's server-side streaming capabilities. When a job is started, the server will continuously send `JobLogsResponse` messages to the client over a single RPC as the output of the job becomes available. The client can read these messages as they arrive, providing a real-time stream of logs.
 
-Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by utilizing a shared circular buffer stored in memory, and a mechanism for tracking each client's read position.
+Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by writing the output to a file on disk, and tracking each client's read position.
 
-1. Upon initiation of a job, the output is captured and written into a shared buffer in memory. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
+1. Upon initiation of a job, the output is captured and written into a file on disk. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
 
-2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers.
+2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers. Access to the map is synchronized to ensure thread-safety.
 
-3. As the job generates output, it is written into the shared circular buffer in memory. If the buffer is full, new data starts overwriting the oldest data in the buffer. Each time new data is written to the buffer, all subscribers are notified and sent the new data.
+3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data.
 
-4. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers.
+4. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers. If a client reconnects, it starts receiving the output from where it left off.
 
-5. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server sends a `JobLogsResponse` message with `jobCompleted` set to `true`. This indicates that the job has completed and the stream is ending. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, followed by the `JobLogsResponse` message indicating job completion.
+5. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server closes its half of the stream, indicating to the client that the job has completed and the stream has ended. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, then closes the stream.
 
 ## Implementation Details
 
@@ -86,7 +86,7 @@ When a new job is started, the library will create a new `exec.Cmd` instance, st
 
 To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
 
-Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2 with the `github.com/containerd/cgroups` package. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution.
+Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution. To ensure that the process is added to the cgroup immediately upon start, we use the `os/exec` package in Go to start the process and get its PID. Then, we add the PID to the cgroup.
 
 The specific resource limits that will be enforced are:
 

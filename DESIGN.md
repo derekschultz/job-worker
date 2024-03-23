@@ -70,11 +70,13 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers. Access to the map is synchronized to ensure thread-safety.
 
-3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data.
+3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data. This is done by writing the new data to each subscriber's channel. The subscribers can then read the data from the channel and send it to the client over the gRPC stream.
 
-4. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers. If a client reconnects, it starts receiving the output from where it left off.
+4. If a client has consumed all the current output and the job is still running, a goroutine ensures the client continues to receive new output as it's generated. This goroutine continuously reads from the job's output file and sends new data to the client over the gRPC stream. The read operation blocks until new data is written to the file.
 
-5. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server closes its half of the stream, indicating to the client that the job has completed and the stream has ended. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, then closes the stream.
+5. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers. If a client reconnects, it starts receiving the output from where it left off.
+
+6. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server closes its half of the stream, indicating to the client that the job has completed and the stream has ended. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, then closes the stream.
 
 ## Implementation Details
 
@@ -86,7 +88,7 @@ When a new job is started, the library will create a new `exec.Cmd` instance, st
 
 To stop a job, the library will use the `Cmd.Process.Kill` method. This will send a SIGKILL signal to the process, causing it to terminate immediately.
 
-Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution. To ensure that the process is added to the cgroup immediately upon start, we use the `os/exec` package in Go to start the process and get its PID. Then, we add the PID to the cgroup.
+Resource control for CPU, Memory and Disk IO per job will be implemented using cgroups v2. When a new job is started, the library will create a new cgroup for the job, set the resource limits, and add the job's process to the cgroup immediately upon its start. This ensures that the resource limits are enforced from the very beginning of the process's execution. To ensure that the process is added to the cgroup immediately upon start, we use the `os/exec` package in Go to start the process and get its PID. Then, we add the PID to the cgroup. To further ensure that the process and all of its child processes remain within their assigned cgroup and cannot escape, we will use cgroup namespaces. A new cgroup namespace will be created for each job. This namespace will isolate the view of the cgroup hierarchy for the job's process, meaning it can only see and interact with its own cgroup.
 
 The specific resource limits that will be enforced are:
 

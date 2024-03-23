@@ -66,11 +66,11 @@ The `Logs` API method will stream the output (both stdout and stderr) of a job i
 
 Within the framework of gRPC streaming, the design of the logging system is intended to facilitate simultaneous output streaming by multiple clients. This is accomplished by writing the output to a file on disk, and tracking each client's read position.
 
-1. Upon initiation of a job, the output is captured and written into a file on disk. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
+1. Upon initiation of a job, the output is captured and written into an `os.File` on disk. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
 
 2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers. Access to the map is synchronized to ensure thread-safety.
 
-3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data. This is done by writing the new data to each subscriber's channel. The subscribers can then read the data from the channel and send it to the client over the gRPC stream.
+3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data. This is done by writing the new data to each subscriber's channel. The subscribers can then read the data from the channel and send it to the client over the gRPC stream. Unlike `io.Reader`, `os.File` does not return `io.EOF` when it has read all the data. Instead, it blocks until new data is written to the file or the file is closed.
 
 4. If a client has consumed all the current output and the job is still running, a goroutine ensures the client continues to receive new output as it's generated. This goroutine continuously reads from the job's output file and sends new data to the client over the gRPC stream. The read operation blocks until new data is written to the file.
 

@@ -25,7 +25,7 @@ The API will be a gRPC API with the following methods:
 
 ## Protobuf Specification
 
-Please see [job_worker.proto](/proto/job_worker.proto) for the full protobuf specification.
+Please see [jobworker.proto](/proto/jobworker.proto) for the full protobuf specification.
 
 ## CLI UX
 
@@ -68,15 +68,21 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 1. Upon initiation of a job, the output is captured and written into an `os.File` on disk. This is achieved by employing the `os/exec` package's `Cmd.StdoutPipe` and `Cmd.StderrPipe` methods. These methods return `io.ReadCloser` instances that can be read to capture the command's output.
 
-2. When a client requests to stream the job's output, it is added to a map of subscribers for that job. The keys in the map are unique identifiers for each subscription (not client IDs, as a single client can have multiple subscriptions) and the values are the channels over which the log lines are sent to the subscribers. Access to the map is synchronized to ensure thread-safety.
+2. When a client requests to stream the job's output, a new `Subscriber` is created. This `Subscriber` holds the gRPC stream for the client and the offset up to which the client has read the file. The `Subscriber` is added to a map of subscribers maintained by the job, with the key being the unique identifier for the subscription (not the client ID, as a single client can have multiple subscriptions). Access to this map is synchronized using a mutex to ensure thread-safety.
 
-3. As the job generates output, it is written into the file on disk. Each time new data is written to the file, all subscribers are notified and sent the new data. This is done by writing the new data to each subscriber's channel. The subscribers can then read the data from the channel and send it to the client over the gRPC stream. Unlike `io.Reader`, `os.File` does not return `io.EOF` when it has read all the data. Instead, it blocks until new data is written to the file or the file is closed.
+3. A loop is started that continues until the job is complete. In each iteration of the loop:
+   - A mutex is locked to ensure exclusive access to the job and file.
+   - The current size of the file is checked. If it's larger than a subscriber's current offset, it means there's data the subscriber hasn't read yet.
+   - The file is seeked to the subscriber's offset.
+   - Lines are read from the file until the end of the currently available data is reached.
+   - For each line, the subscriber's offset is updated and the line is sent to the client over the gRPC stream.
+   - If all currently available data has been read and the job is still running, the mutex is unlocked, there's a short wait (e.g., 100ms), and the next iteration starts.
 
-4. If a client has consumed all the current output and the job is still running, a goroutine ensures the client continues to receive new output as it's generated. This goroutine continuously reads from the job's output file and sends new data to the client over the gRPC stream. The read operation blocks until new data is written to the file.
+4. When a client disconnects or the job completes, the `Subscriber` is removed from the job's map of subscribers.
 
-5. In the event of a client disconnecting or ceasing to stream the output, it is removed from the map of subscribers. If a client reconnects, it starts receiving the output from where it left off.
+This approach ensures that each client receives the full output of the job, starting from the beginning, regardless of when they start streaming. Each client has its own offset into the file, so clients that start streaming later will first receive the earlier parts of the output, and then catch up to the live output.
 
-6. If the job completes while streaming, the server continues to send any remaining output to the client. Once all the output has been sent, the server closes its half of the stream, indicating to the client that the job has completed and the stream has ended. If the `Logs` API starts after the job completes, the server sends all the output that was captured during the job's execution, then closes the stream.
+The use of a mutex ensures that access to the shared job and file resources is synchronized across all clients.
 
 ## Implementation Details
 
@@ -103,6 +109,12 @@ The mTLS authentication will be implemented using Go's `crypto/tls` package. The
 The authorization scheme will be simple: each job will be associated with the client that started it, and clients will only be allowed to control their own jobs. This will be enforced by the API server.
 
 The CLI will parse command-line arguments and make the appropriate gRPC calls to the API server. It will print the responses to the console.
+
+The `Logs` method will be implemented as follows: When a client calls `Logs`, a new `Subscriber` will be created and added to the job's list of subscribers. A loop will be started that continues until the job is complete. In each iteration, a mutex will be locked, the file size will be checked, and if there's new data for the subscriber, it will be read and sent over the gRPC stream. The mutex will be unlocked, and if the job is still running, there will be a short wait before the next iteration. When the client disconnects or the job completes, the `Subscriber` will be removed from the job's map of subscribers.
+
+## Performance Considerations
+
+The current design checks the file size in each iteration of the loop. While this approach is simple and effective, it might not be the most efficient if the file is very large or updates are infrequent. Future optimizations could include using a file change notification system, if available on the platform, or adjusting the polling frequency based on the rate of updates.
 
 ## Testing
 

@@ -25,7 +25,7 @@ The API will be a gRPC API with the following methods:
 
 ## Protobuf Specification
 
-Please see [jobworker.proto](/proto/jobworker.proto) for the full protobuf specification.
+Please see [job_worker.proto](/proto/job_worker.proto) for the full protobuf specification.
 
 ## CLI UX
 

@@ -70,19 +70,16 @@ Within the framework of gRPC streaming, the design of the logging system is inte
 
 2. When a client requests to stream the job's output, a new `Subscriber` is created. This `Subscriber` holds the gRPC stream for the client and the offset up to which the client has read the file. The `Subscriber` is added to a map of subscribers maintained by the job, with the key being the unique identifier for the subscription (not the client ID, as a single client can have multiple subscriptions). Access to this map is synchronized using a mutex to ensure thread-safety.
 
-3. A loop is started that continues until the job is complete. In each iteration of the loop:
-   - A mutex is locked to ensure exclusive access to the job and file.
-   - The current size of the file is checked. If it's larger than a subscriber's current offset, it means there's data the subscriber hasn't read yet.
-   - The file is seeked to the subscriber's offset.
-   - Lines are read from the file until the end of the currently available data is reached.
-   - For each line, the subscriber's offset is updated and the line is sent to the client over the gRPC stream.
-   - If all currently available data has been read and the job is still running, the mutex is unlocked, there's a short wait (e.g., 100ms), and the next iteration starts.
+A single loop is started for each job, and this loop continues until the job is complete. Within this loop, the following steps are performed in each iteration:
+    - A mutex is locked to ensure exclusive access to the job's output file and other shared resources.
+    - For each subscriber of the job:
+    - The current size of the output file is checked. If it's larger than the subscriber's current offset, it means there's new data that the subscriber hasn't read yet.
+    - The file is seeked to the subscriber's offset position.
+    - Lines are read from the file until the end of the currently available data is reached.
+    - For each line read, the subscriber's offset is updated, and the line is sent to the client over the gRPC stream.
+    - If all currently available data has been read for all subscribers and the job is still running, the mutex is unlocked, there's a short wait (e.g., 100ms), and the next iteration starts.
 
-4. When a client disconnects or the job completes, the `Subscriber` is removed from the job's map of subscribers.
-
-This approach ensures that each client receives the full output of the job, starting from the beginning, regardless of when they start streaming. Each client has its own offset into the file, so clients that start streaming later will first receive the earlier parts of the output, and then catch up to the live output.
-
-The use of a mutex ensures that access to the shared job and file resources is synchronized across all clients.
+This approach ensures that each client receives the full output of the job, starting from the beginning, regardless of when they start streaming. Each client has its own offset into the file, so clients that start streaming later will first receive the earlier parts of the output, and then catch up to the live output. The use of a mutex ensures that access to the shared job and file resources is synchronized across all clients.
 
 ## Implementation Details
 
